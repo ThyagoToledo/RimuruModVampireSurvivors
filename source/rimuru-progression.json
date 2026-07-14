@@ -1,0 +1,181 @@
+{
+  "schemaVersion": 3,
+  "characterId": "rimuru_tempest",
+  "nativeCustomPackage": {
+    "startingWeapon": "GARLIC",
+    "defaultForm": "slime",
+    "manualSkins": ["slime", "humanoid", "demon_lord"],
+    "proxyLoadouts": {
+      "slime": {
+        "startingWeapon": "GARLIC",
+        "hiddenWeapons": ["SUMMONNIGHT"],
+        "abilities": ["predator_aura", "ranga_proxy", "slime_regeneration"]
+      },
+      "humanoid": {
+        "startingWeapon": "NIGHTSWORD",
+        "hiddenWeapons": ["BUBBLES", "FIREBALL"],
+        "abilities": ["katana", "water_manipulation", "black_flame"]
+      },
+      "demon_lord": {
+        "startingWeapon": "NIGHTSWORD2",
+        "hiddenWeapons": ["SUMMONNIGHT2", "SHADOWSERVANT2", "LAUREL"],
+        "abilities": ["beelzebuth_proxy", "tempest_summons", "multilayer_barrier"]
+      }
+    }
+  },
+  "forms": [
+    {
+      "id": "slime",
+      "displayName": "Rimuru - Slime",
+      "skin": "slime",
+      "unlocksAtLevel": 1,
+      "abilities": ["predator_core", "mimic_body", "slime_regeneration"],
+      "summons": ["ranga"]
+    },
+    {
+      "id": "humanoid",
+      "displayName": "Rimuru - Humanoid",
+      "skin": "humanoid",
+      "unlocksAtLevel": 20,
+      "abilities": ["water_blade", "black_flame", "tempest_command"],
+      "summons": ["ranga", "tempest_companions"]
+    },
+    {
+      "id": "demon_lord",
+      "displayName": "Rimuru - Demon Lord",
+      "skin": "demon_lord",
+      "unlocksWith": "beelzebuth_demon_lord",
+      "abilities": ["beelzebuth", "great_sage", "ciel"]
+    }
+  ],
+  "passive": {
+    "id": "great_sage",
+    "displayName": "Great Sage",
+    "maxLevel": 5,
+    "levels": [
+      { "level": 1, "area": 0.05, "growth": 0.05 },
+      { "level": 2, "cooldown": -0.03, "magnet": 0.05 },
+      { "level": 3, "area": 0.05, "growth": 0.05 },
+      { "level": 4, "cooldown": -0.03, "magnet": 0.05 },
+      { "level": 5, "area": 0.10, "growth": 0.10 }
+    ],
+    "revivalAnalysis": {
+      "trigger": "after_revival",
+      "requiresRevivalItem": true,
+      "analyzeKillerEnemyFamily": true,
+      "grantImmunity": true,
+      "immunityScope": "enemy_family",
+      "immunityUntil": "run_end",
+      "analyzeOnlyOncePerEnemyFamily": true
+    },
+    "aimControl": {
+      "enabled": true,
+      "targetPriority": "low_health_then_threat_then_distance",
+      "leadSeconds": 0.12,
+      "retargetSeconds": 0.10,
+      "maxTurnDegreesPerSecond": 720,
+      "avoidOversteer": true
+    }
+  },
+  "summons": [
+    {
+      "id": "ranga",
+      "displayName": "Ranga",
+      "assetFolder": "assets/summons/ranga",
+      "unlocks": { "form": "slime", "predatorLevel": 4 },
+      "behavior": "dash_nearest_target",
+      "cooldownSeconds": 8.0,
+      "damageMultiplier": 1.2
+    },
+    {
+      "id": "tempest_companions",
+      "displayName": "Tempest Companions",
+      "unlocks": { "form": "humanoid", "characterLevel": 35 },
+      "count": 2,
+      "behavior": "orbit_then_intercept",
+      "cooldownSeconds": 12.0,
+      "damageMultiplier": 0.8
+    }
+  ],
+  "weapon": {
+    "id": "predator_katana",
+    "displayName": "Predator: Rimuru Blade",
+    "nativeFallback": "NIGHTSWORD",
+    "maxLevel": 8,
+    "levels": [
+      { "level": 1, "damage": 16, "cooldown": 2.20, "amount": 1, "area": 0.90 },
+      { "level": 2, "damage": 4, "pierce": 1 },
+      { "level": 3, "speed": 0.20, "cooldown": -0.10 },
+      { "level": 4, "summon": "ranga", "damage": 4 },
+      { "level": 5, "area": 0.25, "slowSeconds": 0.25 },
+      { "level": 6, "pierce": 1, "damage": 6 },
+      { "level": 7, "cooldown": -0.35, "returnDamage": 0.50 },
+      { "level": 8, "amount": 1, "damageMultiplier": 1.30, "slowCap": 0.35 }
+    ]
+  },
+  "evolution": {
+    "id": "beelzebuth_demon_lord",
+    "displayName": "Beelzebuth, Demon Lord",
+    "requires": {
+      "weaponId": "predator_katana",
+      "weaponLevel": 8,
+      "passiveId": "great_sage",
+      "passiveLevel": 5,
+      "treasure": true,
+      "minimumForm": "humanoid"
+    },
+    "result": {
+      "weaponId": "beelzebuth_demon_lord",
+      "damageMultiplier": 2.0,
+      "areaMultiplier": 1.35,
+      "pullStrength": 0.60,
+      "durationSeconds": 1.80,
+      "executeCommonBelowHealth": 0.10,
+      "preserveBosses": true,
+      "skinFolder": "demon_lord",
+      "forceSkinSwap": true
+    }
+  },
+  "cielEvolution": {
+    "id": "ciel",
+    "fromPassiveId": "great_sage",
+    "requires": {
+      "demonLordForm": true,
+      "revivalAnalysis": true
+    },
+    "result": {
+      "copyEnemyAbility": true,
+      "copiedAbilityUsesEnemyFamily": true,
+      "counterstrikeOnAnalyzedTarget": true,
+      "executeAnalyzedTarget": true,
+      "copiedAbilityCooldownSeconds": 3.0,
+      "immunityPersistsUntilRunEnd": true,
+      "aimControlMode": "predictive_intercept"
+    }
+  },
+  "thirdEvolution": {
+    "id": "azathoth_reaper_severance",
+    "displayName": "Azathoth, Void God",
+    "requires": {
+      "weaponId": "beelzebuth_demon_lord",
+      "weaponLevel": 8,
+      "cielAwakened": true,
+      "rangaSummoned": true,
+      "treasure": true
+    },
+    "result": {
+      "weaponId": "azathoth_reaper_severance",
+      "damageMultiplier": 2.4,
+      "areaMultiplier": 1.5,
+      "summonMultiplier": 1.5,
+      "reaperProtocol": {
+        "targetFamilies": ["red_reaper", "death"],
+        "maxHealthDamagePercent": 0.03,
+        "tickSeconds": 0.50,
+        "executeBelowHealthRatio": 0.01,
+        "requiresCielImmunity": true,
+        "allowKill": true
+      }
+    }
+  }
+}

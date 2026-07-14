@@ -1,0 +1,69 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net6.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+    <AssemblyName>RimuruSurvivor</AssemblyName>
+    <RootNamespace>RimuruSurvivor</RootNamespace>
+    <LangVersion>latest</LangVersion>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <BepInExRoot Condition="'$(BEPINEX_ROOT)' != ''">$(BEPINEX_ROOT)</BepInExRoot>
+    <BepInExRoot Condition="'$(BepInExRoot)' == ''">$(BEPINEX_ROOT)</BepInExRoot>
+  </PropertyGroup>
+
+  <Target Name="RequireBepInEx" BeforeTargets="ResolveReferences">
+    <Error Condition="'$(BepInExRoot)' == ''" Text="Defina BEPINEX_ROOT para a pasta BepInEx gerada pela mesma instalacao do Vampire Survivors." />
+  </Target>
+
+  <ItemGroup>
+    <Compile Include="src\**\*.cs" />
+    <Reference Include="BepInEx.Core">
+      <HintPath>$(BepInExRoot)\core\BepInEx.Core.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="BepInEx.Unity.IL2CPP">
+      <HintPath>$(BepInExRoot)\core\BepInEx.Unity.IL2CPP.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="0Harmony">
+      <HintPath>$(BepInExRoot)\core\0Harmony.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Il2CppInterop.Runtime">
+      <HintPath>$(BepInExRoot)\core\Il2CppInterop.Runtime.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Il2Cppmscorlib">
+      <HintPath>$(BepInExRoot)\interop\Il2Cppmscorlib.dll</HintPath>
+      <Private>false</Private>
+      <Aliases>il2cpp</Aliases>
+    </Reference>
+    <Reference Include="VampireSurvivors.Runtime">
+      <HintPath>$(BepInExRoot)\interop\VampireSurvivors.Runtime.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="PhaserPort">
+      <HintPath>$(BepInExRoot)\interop\PhaserPort.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="PauseSystem">
+      <HintPath>$(BepInExRoot)\interop\PauseSystem.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Unity.Mathematics">
+      <HintPath>$(BepInExRoot)\interop\Unity.Mathematics.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.CoreModule">
+      <HintPath>$(BepInExRoot)\interop\UnityEngine.CoreModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.ImageConversionModule">
+      <HintPath>$(BepInExRoot)\interop\UnityEngine.ImageConversionModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+</Project>

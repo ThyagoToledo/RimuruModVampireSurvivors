@@ -1,0 +1,10 @@
+{
+  "mod": "Rimuru Mod for Vampire Survivors",
+  "version": "0.3.0",
+  "plugin": "plugin/RimuruSurvivor.dll",
+  "pluginSha256": "24F054EC79C354276F764B7C3767CE4132751587743450DFA1237A4A48C47280",
+  "customCharacter": "custom-character",
+  "loader": "BepInEx 6 IL2CPP x64",
+  "loaderDownloadedByInstaller": true,
+  "gameBranch": "public-beta"
+}

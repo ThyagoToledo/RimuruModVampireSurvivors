@@ -1,0 +1,14 @@
+# Build output for contributors
+source/**/bin/
+source/**/obj/
+source/**/TestResults/
+source/**/__pycache__/
+
+# Local references and archives
+*.user
+*.suo
+*.zip
+dist/**/source/
+
+# Installer leftovers
+installer/*.log
