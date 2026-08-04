@@ -1,6 +1,14 @@
 using System.Numerics;
 using RimuruSurvivor;
 
+if (!RimuruAdventureRules.IsRimuru("Rimuru", "Tempest") ||
+    RimuruAdventureRules.IsRimuru("Rimuru", "") ||
+    !RimuruAdventureRules.ShouldAppend(false, " rimuru ", " tempest ") ||
+    RimuruAdventureRules.ShouldAppend(true, "Rimuru", "Tempest"))
+{
+    throw new InvalidOperationException("Adventure roster policy did not identify Rimuru idempotently.");
+}
+
 if (RimuruPatchTargets.All.Count != 3 ||
     !RimuruPatchTargets.All.Any(target => target.MethodName == "HasPotentialEvolution") ||
     !RimuruPatchTargets.All.Any(target => target.TypeName == "LevelUpFactory") ||
@@ -10,6 +18,13 @@ if (RimuruPatchTargets.All.Count != 3 ||
 }
 
 var state = new RimuruRunState();
+var earlyState = new RimuruRunState();
+earlyState.InitializeForm(RimuruForm.Humanoid);
+if (earlyState.TryEvolveDemonLordStable(characterLevel: 39, weaponLevel: 8, passiveLevel: 5))
+{
+    throw new InvalidOperationException("Demon Lord evolution unlocked before the stable gate.");
+}
+
 if (!state.TrySummonRanga(predatorLevel: 4))
 {
     throw new InvalidOperationException("Ranga did not unlock from the Slime form.");
@@ -25,9 +40,19 @@ if (!state.TrySummonTempestCompanions(characterLevel: 35) || state.TempestCompan
     throw new InvalidOperationException("Tempest companions did not unlock.");
 }
 
-if (!state.TryEvolveDemonLord(weaponLevel: 8, passiveLevel: 5, treasureOpened: true))
+if (!state.TryEvolveDemonLordStable(characterLevel: 40, weaponLevel: 8, passiveLevel: 5))
 {
     throw new InvalidOperationException("Demon Lord evolution did not unlock.");
+}
+
+if (!state.TryAwakenCielFromCombatAnalysis(characterLevel: 55, beelzebuthLevel: 6))
+{
+    throw new InvalidOperationException("Stable combat analysis did not awaken Ciel.");
+}
+
+if (state.TryEvolveAzathothStable(characterLevel: 59, beelzebuthLevel: 8))
+{
+    throw new InvalidOperationException("Azathoth unlocked before the stable gate.");
 }
 
 var analysis = state.AnalyzeRevival("fanged_bat", "sonic_bite");
@@ -36,7 +61,7 @@ if (!analysis.CielAwakened || !analysis.AbilityCopied || !state.IsImmuneTo("fang
     throw new InvalidOperationException("Revival analysis did not unlock immunity and Ciel.");
 }
 
-if (!state.TryEvolveAzathoth(beelzebuthLevel: 8, treasureOpened: true))
+if (!state.TryEvolveAzathothStable(characterLevel: 60, beelzebuthLevel: 8))
 {
     throw new InvalidOperationException("Third weapon evolution did not unlock.");
 }

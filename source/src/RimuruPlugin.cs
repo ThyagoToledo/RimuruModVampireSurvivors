@@ -9,7 +9,7 @@ public sealed class RimuruPlugin : BasePlugin
 {
     public const string PluginGuid = "ursoftware.vampiresurvivors.rimuru";
     public const string PluginName = "Rimuru Tempest";
-    public const string PluginVersion = "0.3.0";
+    public const string PluginVersion = "0.4.2";
 
     public override void Load()
     {
@@ -30,6 +30,10 @@ public sealed class RimuruPlugin : BasePlugin
             message => Log.LogInfo(message),
             warning => Log.LogWarning(warning),
             includeAdaptiveHooks: false);
+        RimuruAdventureIntegration.Install(
+            harmony,
+            message => Log.LogInfo(message),
+            warning => Log.LogWarning(warning));
         RimuruGameplayBootstrap.Start(
             message => Log.LogInfo(message),
             warning => Log.LogWarning(warning));

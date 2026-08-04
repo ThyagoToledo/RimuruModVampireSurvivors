@@ -10,5 +10,6 @@
     <Compile Include="Program.cs" />
     <Compile Include="..\src\RimuruRuntimeRules.cs" Link="RimuruRuntimeRules.cs" />
     <Compile Include="..\src\RimuruPatchTargets.cs" Link="RimuruPatchTargets.cs" />
+    <Compile Include="..\src\RimuruAdventureRules.cs" Link="RimuruAdventureRules.cs" />
   </ItemGroup>
 </Project>
