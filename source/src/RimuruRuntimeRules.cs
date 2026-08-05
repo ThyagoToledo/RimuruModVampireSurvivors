@@ -79,6 +79,27 @@ public sealed class RimuruRunState
         return true;
     }
 
+    public bool TryEvolveDemonLordStable(int characterLevel, int weaponLevel, int passiveLevel)
+    {
+        if (characterLevel < 40)
+        {
+            return false;
+        }
+
+        return TryEvolveDemonLord(weaponLevel, passiveLevel, treasureOpened: true);
+    }
+
+    public bool TryAwakenCielFromCombatAnalysis(int characterLevel, int beelzebuthLevel)
+    {
+        if (!IsDemonLord || IsCiel || characterLevel < 55 || beelzebuthLevel < 6)
+        {
+            return false;
+        }
+
+        IsCiel = true;
+        return true;
+    }
+
     public bool TryEvolveAzathoth(int beelzebuthLevel, bool treasureOpened)
     {
         if (!IsDemonLord || !IsCiel || !RangaSummoned || HasAzathoth || beelzebuthLevel < 8 || !treasureOpened)
@@ -88,6 +109,16 @@ public sealed class RimuruRunState
 
         HasAzathoth = true;
         return true;
+    }
+
+    public bool TryEvolveAzathothStable(int characterLevel, int beelzebuthLevel)
+    {
+        if (characterLevel < 60)
+        {
+            return false;
+        }
+
+        return TryEvolveAzathoth(beelzebuthLevel, treasureOpened: true);
     }
 
     public RevivalAnalysisResult AnalyzeRevival(string enemyFamilyId, string enemyAbilityId)

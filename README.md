@@ -18,6 +18,12 @@
 > [!IMPORTANT]
 > Use a branch `public-beta` de Vampire Survivors. Feche o jogo antes de instalar ou reparar o mod.
 
+### Versao suportada
+
+Esta distribuicao foi validada em **Vampire Survivors public-beta**, executavel Unity
+`6000.0.62f1`, com **BepInEx 6.0.0-be.785 IL2CPP x64**. Uma atualizacao do jogo pode
+exigir uma nova versao do mod.
+
 ---
 
 ## Instalação rápida
@@ -99,6 +105,11 @@ O plugin deve ser compilado contra as assemblies IL2CPP geradas pela mesma build
     </td>
   </tr>
 </table>
+
+## Licenca
+
+O codigo original deste mod e distribuido sob a [MIT License](LICENSE). BepInEx e
+quaisquer bibliotecas de terceiros permanecem sob suas proprias licencas.
 
 ---
 

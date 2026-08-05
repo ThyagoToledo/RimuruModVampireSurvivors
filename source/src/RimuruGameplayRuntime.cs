@@ -3,10 +3,14 @@ using HarmonyLib;
 using Il2CppInterop.Runtime.Attributes;
 using Il2CppInterop.Runtime.InteropTypes.Arrays;
 using UnityEngine;
+using UnityEngine.UI;
 using VampireSurvivors.Data;
+using VampireSurvivors.Data.Characters;
+using VampireSurvivors.Framework;
 using VampireSurvivors.Objects.Characters;
 using VampireSurvivors.Objects.Items;
 using VampireSurvivors.Objects.Weapons;
+using VampireSurvivors.UI;
 using UObject = UnityEngine.Object;
 
 namespace RimuruSurvivor;
@@ -45,6 +49,39 @@ internal static class RimuruGameplayHooks
             null,
             nameof(PlayerLateUpdatePostfix),
             "animacao das formas",
+            info,
+            warning);
+        TryPatch(
+            harmony,
+            AccessTools.Method(
+                typeof(CharacterSelectInfoPanel),
+                nameof(CharacterSelectInfoPanel.SetWeaponIconSprite),
+                new[] { typeof(DataManager), typeof(CharacterData), typeof(Skin) }),
+            nameof(SelectionWeaponIconSkinPrefix),
+            null,
+            "icone de arma por skin na selecao",
+            info,
+            warning);
+        TryPatch(
+            harmony,
+            AccessTools.Method(
+                typeof(CharacterSelectInfoPanel),
+                nameof(CharacterSelectInfoPanel.SetWeaponIconSprite),
+                new[] { typeof(DataManager), typeof(CharacterData) }),
+            nameof(SelectionWeaponIconDefaultPrefix),
+            null,
+            "icone de arma padrao na selecao",
+            info,
+            warning);
+        TryPatch(
+            harmony,
+            AccessTools.Method(
+                typeof(GameEquipmentPanelItem),
+                nameof(GameEquipmentPanelItem.Initialize),
+                new[] { typeof(CharacterController), typeof(VampireSurvivors.Data.Weapons.WeaponData), typeof(WeaponType) }),
+            null,
+            nameof(EquipmentIconPostfix),
+            "icone de arma durante a partida",
             info,
             warning);
         if (!includeAdaptiveHooks)
@@ -155,6 +192,27 @@ internal static class RimuruGameplayHooks
     {
         RimuruRuntimeBehaviour.Instance?.RegisterTreasure(__instance);
     }
+
+    private static bool SelectionWeaponIconSkinPrefix(
+        CharacterSelectInfoPanel __instance,
+        CharacterData __1,
+        Skin __2)
+    {
+        return !(RimuruRuntimeBehaviour.Instance?.TrySetSelectionWeaponIcon(__instance, __1, __2) ?? false);
+    }
+
+    private static bool SelectionWeaponIconDefaultPrefix(CharacterSelectInfoPanel __instance, CharacterData __1)
+    {
+        return !(RimuruRuntimeBehaviour.Instance?.TrySetSelectionWeaponIcon(__instance, __1, null) ?? false);
+    }
+
+    private static void EquipmentIconPostfix(
+        GameEquipmentPanelItem __instance,
+        CharacterController __0,
+        WeaponType __2)
+    {
+        RimuruRuntimeBehaviour.Instance?.TrySetEquipmentWeaponIcon(__instance, __0, __2);
+    }
 }
 
 internal sealed class RimuruRuntimeBehaviour
@@ -181,6 +239,7 @@ internal sealed class RimuruRuntimeBehaviour
         _assetRoot = ResolveAssetRoot();
         _customRoot = ResolveCustomRoot();
         LoadAssets();
+        _info($"Assets visuais carregados: {_sprites.Count}; plugin {_assetRoot}; CUSTOM {_customRoot}.");
     }
 
     public static void Initialize(Action<string> info, Action<string> warning)
@@ -318,6 +377,52 @@ internal sealed class RimuruRuntimeBehaviour
     }
 
     [HideFromIl2Cpp]
+    public bool TrySetSelectionWeaponIcon(CharacterSelectInfoPanel panel, CharacterData character, Skin skin)
+    {
+        try
+        {
+            if (panel is null || character is null ||
+                !character.charName.Contains("Rimuru", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            var suffix = skin?.suffix ?? string.Empty;
+            var spriteId = suffix.Contains("Demon", StringComparison.OrdinalIgnoreCase)
+                ? "beelzebuth-blade"
+                : suffix.Contains("Humanoid", StringComparison.OrdinalIgnoreCase)
+                    ? "rimuru-katana-v2"
+                    : "predator-core";
+            return RimuruVisuals.SetImageSprite(panel._weaponIcon, GetSprite(spriteId));
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    [HideFromIl2Cpp]
+    public bool TrySetEquipmentWeaponIcon(
+        GameEquipmentPanelItem item,
+        CharacterController owner,
+        WeaponType weaponType)
+    {
+        if (!IsRimuru(owner))
+        {
+            return false;
+        }
+
+        var spriteId = weaponType switch
+        {
+            WeaponType.GARLIC => "predator-core",
+            WeaponType.NIGHTSWORD => "rimuru-katana-v2",
+            WeaponType.NIGHTSWORD2 => "beelzebuth-blade",
+            _ => null
+        };
+        return spriteId is not null && RimuruVisuals.SetImageSprite(item?._icon, GetSprite(spriteId));
+    }
+
+    [HideFromIl2Cpp]
     private RimuruPlayerRuntime EnsurePlayer(CharacterController controller)
     {
         var id = controller.GetInstanceID();
@@ -326,12 +431,40 @@ internal sealed class RimuruRuntimeBehaviour
             return existing;
         }
 
+        PruneDestroyedRuntimeObjects();
+
         var initialForm = DetectInitialForm(controller);
         var player = new RimuruPlayerRuntime(controller, initialForm);
         _players[id] = player;
-        EnsureRangaCount(player, initialForm == RimuruForm.DemonLord ? 3 : 1);
+        if (initialForm != RimuruForm.Slime)
+        {
+            player.State.TrySummonRanga(8);
+            SwapWeapon(
+                controller,
+                WeaponType.GARLIC,
+                initialForm == RimuruForm.DemonLord ? WeaponType.NIGHTSWORD2 : WeaponType.NIGHTSWORD);
+            EnsureRangaCount(player, initialForm == RimuruForm.DemonLord ? 3 : 1);
+        }
         _info($"Rimuru detectado em partida: forma inicial {initialForm}, nivel {controller.Level}.");
         return player;
+    }
+
+    [HideFromIl2Cpp]
+    private void PruneDestroyedRuntimeObjects()
+    {
+        foreach (var stale in _players.Values.Where(player => !IsUsable(player.Controller)).ToArray())
+        {
+            stale.Dispose();
+            _players.Remove(stale.Id);
+        }
+
+        for (var index = _effects.Count - 1; index >= 0; index--)
+        {
+            if (!RimuruVisuals.IsUsable(_effects[index].Renderer))
+            {
+                _effects.RemoveAt(index);
+            }
+        }
     }
 
     [HideFromIl2Cpp]
@@ -355,27 +488,45 @@ internal sealed class RimuruRuntimeBehaviour
         {
             var predatorRank = Math.Max(GetWeaponRank(controller, WeaponType.GARLIC), Math.Min(8, 1 + controller.Level / 3));
             player.AbilityRank = predatorRank;
+            if (player.State.TrySummonRanga(predatorRank))
+            {
+                EnsureRangaCount(player, 1);
+                SpawnPulse(controller.transform.position, GetSprite("predator-core"), new Color(0.3f, 0.45f, 1f, 0.9f), 2.2f, 0f, 0.6f);
+                _info("Predador nivel 4: Ranga respondeu ao chamado de Rimuru.");
+            }
             if (controller.Level >= 20 && predatorRank >= 8 && player.State.TryUnlockHumanoid(controller.Level))
             {
                 player.ResetAbilityTimers();
-                EnsureWeapon(controller, WeaponType.NIGHTSWORD);
+                SwapWeapon(controller, WeaponType.GARLIC, WeaponType.NIGHTSWORD);
+                player.BeginTransformation(RimuruForm.Slime, Time.time);
                 SpawnTransformation(player, new Color(0.25f, 0.85f, 1f, 1f));
                 _info("Rimuru evoluiu de Slime para a forma Humanoide.");
             }
         }
         else if (player.Form == RimuruForm.Humanoid)
         {
-            var swordRank = Math.Max(GetWeaponRank(controller, WeaponType.NIGHTSWORD), Math.Min(8, 1 + Math.Max(0, controller.Level - 20) / 3));
-            var sageRank = Math.Max(GetWeaponRank(controller, WeaponType.COOLDOWN), Math.Min(5, 1 + Math.Max(0, controller.Level - 20) / 5));
+            var evolvedSwordRank = GetWeaponRank(controller, WeaponType.NIGHTSWORD2);
+            var nativeEvolutionReady = evolvedSwordRank > 0;
+            var swordRank = nativeEvolutionReady
+                ? 8
+                : Math.Max(GetWeaponRank(controller, WeaponType.NIGHTSWORD), Math.Min(8, 1 + Math.Max(0, controller.Level - 20) / 3));
+            var sageRank = Math.Max(GetAccessoryRank(controller, WeaponType.COOLDOWN), Math.Min(5, 1 + Math.Max(0, controller.Level - 20) / 5));
+            if (nativeEvolutionReady)
+            {
+                sageRank = 5;
+            }
             player.AbilityRank = swordRank;
-            if (controller.Level >= 40 && swordRank >= 8 && sageRank >= 5 && player.TreasuresOpened > 0 &&
-                player.State.TryEvolveDemonLord(swordRank, sageRank, treasureOpened: true))
+            if (player.State.TryEvolveDemonLordStable(nativeEvolutionReady ? 40 : controller.Level, swordRank, sageRank))
             {
                 player.ResetAbilityTimers();
-                EnsureWeapon(controller, WeaponType.NIGHTSWORD2);
+                if (!nativeEvolutionReady)
+                {
+                    SwapWeapon(controller, WeaponType.NIGHTSWORD, WeaponType.NIGHTSWORD2);
+                }
                 EnsureRangaCount(player, 3);
                 controller.SetHealthToMax();
                 controller.SetInvulForMilliSecondsNonCumulativeIncludeParma(5000f);
+                player.BeginTransformation(RimuruForm.Humanoid, Time.time);
                 SpawnTransformation(player, new Color(0.65f, 0.08f, 0.9f, 1f));
                 _info("Rimuru despertou como Lorde Demonio; Beelzebuth e a Barreira Multicamadas estao ativos.");
             }
@@ -383,10 +534,18 @@ internal sealed class RimuruRuntimeBehaviour
         else
         {
             player.AbilityRank = Math.Max(GetWeaponRank(controller, WeaponType.NIGHTSWORD2), Math.Min(8, 1 + Math.Max(0, controller.Level - 40) / 4));
-            if (!player.HasAzathoth && player.State.IsCiel && player.TreasuresOpened >= 2 && controller.Level >= 60 &&
-                player.State.TryEvolveAzathoth(player.AbilityRank, treasureOpened: true))
+            if (player.State.TryAwakenCielFromCombatAnalysis(controller.Level, player.AbilityRank))
+            {
+                player.CielCounterReady = true;
+                player.EvolutionLockUntil = Time.time + 1.25f;
+                SpawnTransformation(player, new Color(0.2f, 0.95f, 1f, 1f));
+                _info("A analise continua do Grande Sabio despertou Ciel.");
+            }
+            if (!player.HasAzathoth && Time.time >= player.EvolutionLockUntil &&
+                player.State.TryEvolveAzathothStable(controller.Level, player.AbilityRank))
             {
                 player.HasAzathoth = true;
+                player.BeginWeaponEvolution(Time.time);
                 SpawnTransformation(player, new Color(0.9f, 0.05f, 0.45f, 1f));
                 _info("Azathoth, Deus do Vazio, despertou. O protocolo contra a Morte esta ativo.");
             }
@@ -434,6 +593,7 @@ internal sealed class RimuruRuntimeBehaviour
 
         if (player.Form == RimuruForm.Slime)
         {
+            player.PlayAttackAnimation(Time.time, 0.34f);
             SpawnPulse(origin, GetSprite("predator-core"), new Color(0.2f, 0.9f, 1f, 0.9f), 2.1f + rank * 0.11f, (18f + rank * 5f) * might, 0.55f);
             player.PrimaryTimer = Mathf.Max(1.05f, 2.35f - rank * 0.12f);
             return;
@@ -442,7 +602,8 @@ internal sealed class RimuruRuntimeBehaviour
         var direction = target is null
             ? new Vector3(1f, 0f, 0f)
             : PredictDirection(origin, target, player.Form == RimuruForm.DemonLord ? 14f : 11f);
-        var sprite = GetSprite(player.Form == RimuruForm.DemonLord ? "beelzebuth-blade" : "rimuru-katana-v2");
+        player.PlayAttackAnimation(Time.time, player.Form == RimuruForm.DemonLord ? 0.28f : 0.34f);
+        var sprite = GetSprite(player.HasAzathoth ? "azathoth-void-blade" : player.Form == RimuruForm.DemonLord ? "beelzebuth-blade" : "rimuru-katana-v2");
         var count = player.Form == RimuruForm.DemonLord ? 2 + rank / 3 : 1 + rank / 5;
         for (var i = 0; i < count; i++)
         {
@@ -472,13 +633,15 @@ internal sealed class RimuruRuntimeBehaviour
         if (player.Form == RimuruForm.Slime)
         {
             var direction = target is null ? Vector3.right : PredictDirection(origin, target, 9f);
-            SpawnBlade(player, origin, direction, GetSprite("rimuru-katana-v2"), (14f + rank * 3f) * might, 9f, 2 + rank / 4, waterBlade: true);
+            player.PlayAttackAnimation(Time.time, 0.42f);
+            SpawnBlade(player, origin, direction, GetSprite("predator-core"), (14f + rank * 3f) * might, 9f, 2 + rank / 4, waterBlade: true);
             player.SecondaryTimer = Mathf.Max(2.2f, 4.4f - rank * 0.2f);
             return;
         }
 
         if (player.Form == RimuruForm.Humanoid)
         {
+            player.PlayAttackAnimation(Time.time, 0.38f);
             SpawnBlackLightning(origin, (26f + rank * 6f) * might, 3 + rank / 2);
             if (target is not null)
             {
@@ -489,7 +652,8 @@ internal sealed class RimuruRuntimeBehaviour
         }
 
         var vortexPosition = target?.transform.position ?? origin;
-        SpawnVortex(vortexPosition, GetSprite("beelzebuth-blade"), (42f + rank * 8f) * might, 4.2f, 2.2f, player.HasAzathoth);
+        player.PlayAttackAnimation(Time.time, 0.48f);
+        SpawnVortex(vortexPosition, GetSprite(player.HasAzathoth ? "azathoth-void-blade" : "beelzebuth-blade"), (42f + rank * 8f) * might, 4.2f, 2.2f, player.HasAzathoth);
         if (player.State.IsCiel || player.CielCounterReady)
         {
             SpawnBlackLightning(origin, (55f + rank * 8f) * might, 6 + rank);
@@ -526,7 +690,7 @@ internal sealed class RimuruRuntimeBehaviour
     }
 
     [HideFromIl2Cpp]
-    private void SpawnPulse(Vector3 position, Sprite sprite, Color color, float radius, float damage, float lifetime)
+    private void SpawnPulse(Vector3 position, Sprite sprite, Color color, float radius, float damage, float lifetime, float delay = 0f)
     {
         if (sprite is null)
         {
@@ -538,6 +702,7 @@ internal sealed class RimuruRuntimeBehaviour
         effect.Damage = damage;
         effect.Radius = radius;
         effect.Lifetime = lifetime;
+        effect.Delay = delay;
         effect.Node.transform.localScale = Vector3.one * 0.25f;
     }
 
@@ -592,6 +757,7 @@ internal sealed class RimuruRuntimeBehaviour
         renderer.sprite = sprite;
         renderer.color = color;
         renderer.sortingOrder = 220;
+        RimuruVisuals.Configure(renderer);
         var effect = new RimuruEffect(node, renderer);
         _effects.Add(effect);
         return effect;
@@ -603,8 +769,21 @@ internal sealed class RimuruRuntimeBehaviour
         for (var index = _effects.Count - 1; index >= 0; index--)
         {
             var effect = _effects[index];
+            if (!RimuruVisuals.IsUsable(effect.Renderer) || !RimuruVisuals.IsUsable(effect.Node))
+            {
+                _effects.RemoveAt(index);
+                continue;
+            }
+
+            if (effect.Delay > 0f)
+            {
+                effect.Delay -= deltaTime;
+                effect.Renderer.enabled = false;
+                continue;
+            }
+            effect.Renderer.enabled = true;
             effect.Age += deltaTime;
-            if (effect.Age >= effect.Lifetime || effect.Node is null)
+            if (effect.Age >= effect.Lifetime)
             {
                 effect.Dispose();
                 _effects.RemoveAt(index);
@@ -702,7 +881,7 @@ internal sealed class RimuruRuntimeBehaviour
     [HideFromIl2Cpp]
     private void UpdateRanga(RimuruPlayerRuntime player, float deltaTime)
     {
-        var characterRenderer = player.FormRenderer ?? player.Controller._CharacterRenderer;
+        var characterRenderer = (Renderer)player.FormRenderer ?? player.Controller._CharacterRenderer;
         for (var index = 0; index < player.Rangas.Count; index++)
         {
             var ranga = player.Rangas[index];
@@ -717,6 +896,7 @@ internal sealed class RimuruRuntimeBehaviour
             if (ranga.Frames.Length > 0)
             {
                 ranga.Renderer.sprite = ranga.Frames[(int)ranga.FrameTimer % ranga.Frames.Length];
+                RimuruVisuals.SyncTexture(ranga.Renderer);
             }
 
             ranga.Cooldown -= deltaTime;
@@ -725,7 +905,7 @@ internal sealed class RimuruRuntimeBehaviour
                 ranga.Target = null;
                 if (ranga.Cooldown <= 0)
                 {
-                    ranga.Target = FindBestTarget(player.Controller.transform.position, 15f);
+                    ranga.Target = FindBestTarget(player.Controller.transform.position, 8f);
                     ranga.HasHit = false;
                 }
             }
@@ -733,6 +913,13 @@ internal sealed class RimuruRuntimeBehaviour
             if (ranga.Target is not null)
             {
                 var targetPosition = ranga.Target.transform.position;
+                if (Vector3.Distance(targetPosition, player.Controller.transform.position) > 7f ||
+                    Vector3.Distance(ranga.Node.transform.position, player.Controller.transform.position) > 7f)
+                {
+                    ranga.Target = null;
+                    ranga.Cooldown = 0.35f;
+                    continue;
+                }
                 ranga.Node.transform.position = Vector3.MoveTowards(ranga.Node.transform.position, targetPosition, deltaTime * (10f + player.AbilityRank * 0.45f));
                 ranga.Renderer.flipX = targetPosition.x < ranga.Node.transform.position.x;
                 if (!ranga.HasHit && Vector3.Distance(ranga.Node.transform.position, targetPosition) <= 0.8f)
@@ -772,11 +959,19 @@ internal sealed class RimuruRuntimeBehaviour
             renderer.sprite = frames[0];
             renderer.enabled = true;
             renderer.color = Color.white;
-            var characterRenderer = player.FormRenderer ?? player.Controller._CharacterRenderer;
-            if (characterRenderer is not null)
+            RimuruVisuals.Configure(renderer);
+            var characterRenderer = (Renderer)player.FormRenderer ?? player.Controller._CharacterRenderer;
+            if (RimuruVisuals.IsUsable(characterRenderer))
             {
-                renderer.sortingLayerID = characterRenderer.sortingLayerID;
-                renderer.sortingOrder = characterRenderer.sortingOrder + 8 + player.Rangas.Count;
+                try
+                {
+                    renderer.sortingLayerID = characterRenderer.sortingLayerID;
+                    renderer.sortingOrder = characterRenderer.sortingOrder + 8 + player.Rangas.Count;
+                }
+                catch
+                {
+                    renderer.sortingOrder = 238 + player.Rangas.Count;
+                }
             }
             else
             {
@@ -791,7 +986,38 @@ internal sealed class RimuruRuntimeBehaviour
     [HideFromIl2Cpp]
     private void SpawnTransformation(RimuruPlayerRuntime player, Color color)
     {
-        SpawnPulse(player.Controller.transform.position, GetSprite("beelzebuth-blade"), color, 4.5f, 70f + player.Controller.Level * 2f, 1.05f);
+        var sprite = GetSprite(player.HasAzathoth ? "azathoth-void-blade" : "predator-core") ?? GetSprite("beelzebuth-blade");
+        SpawnPulse(player.Controller.transform.position, sprite, color, 2.5f, 0f, 0.55f);
+        SpawnPulse(player.Controller.transform.position, sprite, color, 4.2f, 0f, 0.72f, 0.18f);
+        SpawnPulse(player.Controller.transform.position, sprite, color, 5.4f, 70f + player.Controller.Level * 2f, 0.9f, 0.36f);
+    }
+
+    [HideFromIl2Cpp]
+    private void SwapWeapon(CharacterController controller, WeaponType oldType, WeaponType newType)
+    {
+        try
+        {
+            var facade = GM.Core?.WeaponsFacade;
+            if (facade is not null)
+            {
+                if (controller.WeaponsManager?.GetWeaponByTypeFromAnyCollection(oldType) is not null)
+                {
+                    facade.RemoveWeapon(oldType, controller, notifyRemove: true);
+                }
+                if (controller.WeaponsManager?.GetWeaponByTypeFromAnyCollection(newType) is null)
+                {
+                    facade.AddWeapon(newType, controller, removeFromStore: false, skipFire: false);
+                }
+                _info($"Arma proxy evoluida: {oldType} -> {newType}.");
+                return;
+            }
+        }
+        catch (Exception exception)
+        {
+            _warning($"Troca nativa {oldType} -> {newType} falhou; usando concessao compatível: {exception.Message}");
+        }
+
+        EnsureWeapon(controller, newType);
     }
 
     [HideFromIl2Cpp]
@@ -816,6 +1042,19 @@ internal sealed class RimuruRuntimeBehaviour
         try
         {
             return controller.WeaponsManager?.GetWeaponByTypeFromAnyCollection(type)?.Level ?? 0;
+        }
+        catch
+        {
+            return 0;
+        }
+    }
+
+    [HideFromIl2Cpp]
+    private static int GetAccessoryRank(CharacterController controller, WeaponType type)
+    {
+        try
+        {
+            return controller.AccessoriesManager?.GetAccessoryByType(type, searchHidden: true)?.Level ?? 0;
         }
         catch
         {
@@ -924,6 +1163,7 @@ internal sealed class RimuruRuntimeBehaviour
         LoadSprite("predator-core", Path.Combine(_assetRoot, "weapons", "predator-core.png"), 32f);
         LoadSprite("rimuru-katana-v2", Path.Combine(_assetRoot, "weapons", "rimuru-katana-v2.png"), 32f);
         LoadSprite("beelzebuth-blade", Path.Combine(_assetRoot, "weapons", "beelzebuth-blade.png"), 32f);
+        LoadSprite("azathoth-void-blade", Path.Combine(_assetRoot, "weapons", "azathoth-void-blade.png"), 32f);
         for (var index = 1; index <= 4; index++)
         {
             LoadSprite($"ranga-{index:00}", Path.Combine(_assetRoot, "summons", "ranga", $"ranga_{index:00}.png"), 32f);
@@ -988,6 +1228,194 @@ internal sealed class RimuruRuntimeBehaviour
     }
 }
 
+internal static class RimuruVisuals
+{
+    public static bool IsUsable(Component component)
+    {
+        try
+        {
+            return component is not null && component.gameObject is not null && component.gameObject.activeInHierarchy;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    public static bool IsUsable(GameObject node)
+    {
+        try
+        {
+            return node is not null && node.activeInHierarchy;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    public static void Configure(SpriteRenderer renderer)
+    {
+        if (!IsUsable(renderer))
+        {
+            return;
+        }
+
+        renderer.color = Color.white;
+        try
+        {
+            var shader = Shader.Find("Sprites/Default") ??
+                         Shader.Find("Unlit/Transparent") ??
+                         Shader.Find("Unlit/Texture");
+            if (shader is not null)
+            {
+                var material = new Material(shader) { name = $"Rimuru Unlit/{renderer.gameObject.name}" };
+                material.color = Color.white;
+                material.renderQueue = 3000;
+                renderer.material = material;
+                renderer.forceRenderingOff = false;
+                SyncTexture(renderer);
+            }
+        }
+        catch
+        {
+            // Unity can invalidate material wrappers while changing scenes.
+        }
+    }
+
+    public static void SyncTexture(SpriteRenderer renderer)
+    {
+        try
+        {
+            if (!IsUsable(renderer) || renderer.sprite is null || renderer.material is null)
+            {
+                return;
+            }
+
+            renderer.material.mainTexture = renderer.sprite.texture;
+            renderer.material.color = Color.white;
+        }
+        catch
+        {
+            // Scene transitions can release the sprite or its material first.
+        }
+    }
+
+    public static void Configure(MeshRenderer renderer)
+    {
+        if (!IsUsable(renderer))
+        {
+            return;
+        }
+
+        try
+        {
+            var shader = Shader.Find("Unlit/Transparent") ??
+                         Shader.Find("Unlit/Texture") ??
+                         Shader.Find("Sprites/Default");
+            if (shader is null)
+            {
+                return;
+            }
+
+            var material = new Material(shader) { name = $"Rimuru Quad/{renderer.gameObject.name}" };
+            SetMaterialColor(material, Color.white);
+            material.renderQueue = 3000;
+            renderer.material = material;
+            renderer.forceRenderingOff = false;
+        }
+        catch
+        {
+            // Unity can invalidate renderer wrappers while changing scenes.
+        }
+    }
+
+    public static bool SetTexture(MeshRenderer renderer, Sprite sprite, Color color)
+    {
+        try
+        {
+            if (!IsUsable(renderer) || sprite is null || renderer.sharedMaterial is null)
+            {
+                return false;
+            }
+
+            var material = renderer.sharedMaterial;
+            var texture = sprite.texture;
+            material.mainTexture = texture;
+            SetTextureIfPresent(material, "_MainTex", texture);
+            SetTextureIfPresent(material, "_BaseMap", texture);
+            SetTextureIfPresent(material, "_BaseColorMap", texture);
+            SetMaterialColor(material, color);
+            renderer.forceRenderingOff = false;
+            return material.mainTexture is not null;
+        }
+        catch
+        {
+            // Scene transitions can release the texture or its material first.
+            return false;
+        }
+    }
+
+    private static void SetTextureIfPresent(Material material, string propertyName, Texture texture)
+    {
+        if (material.HasProperty(propertyName))
+        {
+            material.SetTexture(propertyName, texture);
+        }
+    }
+
+    private static void SetMaterialColor(Material material, Color color)
+    {
+        foreach (var propertyName in new[] { "_Color", "_BaseColor", "_TintColor" })
+        {
+            if (material.HasProperty(propertyName))
+            {
+                material.SetColor(propertyName, color);
+            }
+        }
+    }
+
+    public static bool SetImageSprite(Image image, Sprite sprite)
+    {
+        try
+        {
+            if (image is null || image.gameObject is null || sprite is null)
+            {
+                return false;
+            }
+
+            var rawImage = image.gameObject.GetComponent<RawImage>() ?? image.gameObject.AddComponent<RawImage>();
+            rawImage.texture = sprite.texture;
+            rawImage.uvRect = new Rect(0f, 0f, 1f, 1f);
+            rawImage.material = null;
+            rawImage.color = Color.white;
+            rawImage.raycastTarget = false;
+            rawImage.enabled = true;
+            image.enabled = false;
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    public static void SafeDestroy(GameObject node)
+    {
+        try
+        {
+            if (node is not null)
+            {
+                UObject.Destroy(node);
+            }
+        }
+        catch
+        {
+            // The native object may already have been released by Unity.
+        }
+    }
+}
+
 internal sealed class RimuruPlayerRuntime
 {
     public RimuruPlayerRuntime(CharacterController controller, RimuruForm initialForm)
@@ -999,6 +1427,7 @@ internal sealed class RimuruPlayerRuntime
         PrimaryTimer = 0.25f;
         SecondaryTimer = 1.2f;
         RegenTimer = 0.5f;
+        PreviousForm = initialForm;
     }
 
     public int Id { get; }
@@ -1007,7 +1436,9 @@ internal sealed class RimuruPlayerRuntime
     public RimuruForm Form => State.Form;
     public List<RangaAvatar> Rangas { get; } = new();
     public GameObject FormNode { get; private set; }
-    public SpriteRenderer FormRenderer { get; private set; }
+    public MeshRenderer FormRenderer { get; private set; }
+    public GameObject WeaponNode { get; private set; }
+    public MeshRenderer WeaponRenderer { get; private set; }
     public EnemyController LastThreat { get; set; }
     public int AbilityRank { get; set; }
     public int TreasuresOpened { get; set; }
@@ -1016,6 +1447,17 @@ internal sealed class RimuruPlayerRuntime
     public float PrimaryTimer { get; set; }
     public float SecondaryTimer { get; set; }
     public float RegenTimer { get; set; }
+    public RimuruForm PreviousForm { get; private set; }
+    public float TransformationStartedAt { get; private set; } = -10f;
+    public float WeaponEvolutionStartedAt { get; private set; } = -10f;
+    public float AttackAnimationStartedAt { get; private set; } = -10f;
+    public float AttackAnimationUntil { get; private set; } = -10f;
+    public float EvolutionLockUntil { get; set; } = -10f;
+    private bool _nativeRenderersLogged;
+    private bool _meshBindingLogged;
+    private bool _animationFailureLogged;
+    private bool _missingFormSpriteLogged;
+    private bool _lastFlipX;
 
     public void ResetAbilityTimers()
     {
@@ -1023,67 +1465,238 @@ internal sealed class RimuruPlayerRuntime
         SecondaryTimer = 0.8f;
     }
 
+    public void BeginTransformation(RimuruForm previousForm, float time)
+    {
+        PreviousForm = previousForm;
+        TransformationStartedAt = time;
+    }
+
+    public void BeginWeaponEvolution(float time)
+    {
+        WeaponEvolutionStartedAt = time;
+    }
+
+    public void PlayAttackAnimation(float time, float duration)
+    {
+        AttackAnimationStartedAt = time;
+        AttackAnimationUntil = time + duration;
+    }
+
+    private void SuppressNativeRenderers(SpriteRenderer primaryRenderer, Action<string> info)
+    {
+        var rendererCount = 0;
+        var primaryId = -1;
+        try
+        {
+            if (RimuruVisuals.IsUsable(primaryRenderer))
+            {
+                primaryId = primaryRenderer.GetInstanceID();
+                _lastFlipX = primaryRenderer.flipX;
+            }
+
+            var renderers = Controller.GetComponentsInChildren<SpriteRenderer>(includeInactive: true);
+            foreach (var renderer in renderers)
+            {
+                if (!RimuruVisuals.IsUsable(renderer))
+                {
+                    continue;
+                }
+
+                try
+                {
+                    rendererCount++;
+                    var rendererId = renderer.GetInstanceID();
+                    if (rendererId == primaryId)
+                    {
+                        _lastFlipX = renderer.flipX;
+                    }
+
+                    if (!_nativeRenderersLogged)
+                    {
+                        var spriteName = renderer.sprite?.name ?? "sem sprite";
+                        var shaderName = renderer.sharedMaterial?.shader?.name ?? "sem shader";
+                        info($"Render nativo do jogador: {renderer.gameObject.name}; sprite {spriteName}; shader {shaderName}; cor {renderer.color}.");
+                    }
+
+                    renderer.enabled = false;
+                    renderer.forceRenderingOff = true;
+                }
+                catch
+                {
+                    // Individual native renderers can expire during a scene transition.
+                }
+            }
+        }
+        catch
+        {
+            // The controller hierarchy can be rebuilt while loading a stage.
+        }
+
+        if (!_nativeRenderersLogged)
+        {
+            info($"Supressao visual nativa do jogador {Id}: {rendererCount} renderizador(es) encontrado(s).");
+            _nativeRenderersLogged = true;
+        }
+    }
+
     public void UpdateCharacterAnimation(IReadOnlyDictionary<string, Sprite> sprites, float time, Action<string> info)
     {
         try
         {
-            var nativeRenderer = Controller._CharacterRenderer;
-            if (FormNode is null || FormRenderer is null)
+            SpriteRenderer nativeRenderer = null;
+            try
             {
-                FormNode = new GameObject("Rimuru Form Visual");
-                FormRenderer = FormNode.AddComponent<SpriteRenderer>();
-                FormRenderer.enabled = true;
-                FormRenderer.color = Color.white;
-                if (nativeRenderer is not null)
-                {
-                    FormRenderer.sortingLayerID = nativeRenderer.sortingLayerID;
-                    FormRenderer.sortingOrder = nativeRenderer.sortingOrder + 4;
-                }
-                else
-                {
-                    FormRenderer.sortingOrder = 234;
-                }
-                info($"Renderizador proprio do Rimuru criado para o jogador {Id}.");
+                nativeRenderer = Controller._CharacterRenderer;
+            }
+            catch
+            {
+                // The replacement render remains independent from the native sprite.
             }
 
-            var formId = Form switch
+            SuppressNativeRenderers(nativeRenderer, info);
+
+            if (!RimuruVisuals.IsUsable(FormRenderer) || !RimuruVisuals.IsUsable(FormNode))
+            {
+                FormNode = GameObject.CreatePrimitive(PrimitiveType.Quad);
+                FormNode.name = "Rimuru Form Visual";
+                FormRenderer = FormNode.GetComponent<MeshRenderer>();
+                FormRenderer.enabled = true;
+                FormRenderer.sortingOrder = 234;
+                RimuruVisuals.Configure(FormRenderer);
+                if (RimuruVisuals.IsUsable(nativeRenderer))
+                {
+                    try
+                    {
+                        FormRenderer.sortingLayerID = nativeRenderer.sortingLayerID;
+                        FormRenderer.sortingOrder = nativeRenderer.sortingOrder + 64;
+                    }
+                    catch
+                    {
+                        FormRenderer.sortingOrder = 234;
+                    }
+                }
+                var shaderName = FormRenderer.sharedMaterial?.shader?.name ?? "sem shader";
+                info($"Renderizador proprio do Rimuru criado para o jogador {Id}; shader {shaderName}.");
+            }
+
+            if (!RimuruVisuals.IsUsable(WeaponRenderer) || !RimuruVisuals.IsUsable(WeaponNode))
+            {
+                WeaponNode = GameObject.CreatePrimitive(PrimitiveType.Quad);
+                WeaponNode.name = "Rimuru Weapon Visual";
+                WeaponRenderer = WeaponNode.GetComponent<MeshRenderer>();
+                WeaponRenderer.enabled = false;
+                WeaponRenderer.sortingOrder = 236;
+                RimuruVisuals.Configure(WeaponRenderer);
+            }
+
+            var transformationProgress = Mathf.Clamp01((time - TransformationStartedAt) / 1.05f);
+            var transforming = transformationProgress < 1f;
+            var displayedForm = transforming && transformationProgress < 0.38f ? PreviousForm : Form;
+            var formId = displayedForm switch
             {
                 RimuruForm.Slime => "slime",
                 RimuruForm.Humanoid => "humanoid",
                 RimuruForm.DemonLord => "demon_lord",
                 _ => "slime"
             };
-            var frame = 1 + (int)(time * (Form == RimuruForm.Slime ? 9f : 8f)) % 4;
-            if (sprites.TryGetValue($"form-{formId}-{frame:00}", out var sprite))
+            var frame = 1 + (int)(time * (displayedForm == RimuruForm.Slime ? 9f : 8f)) % 4;
+            var formSpriteId = $"form-{formId}-{frame:00}";
+            if (sprites.TryGetValue(formSpriteId, out var sprite))
             {
-                FormRenderer.sprite = sprite;
+                var formColor = transforming
+                    ? Color.Lerp(Color.white, new Color(0.35f, 0.95f, 1f, 1f), Mathf.Sin(transformationProgress * Mathf.PI))
+                    : Color.white;
+                var textureApplied = RimuruVisuals.SetTexture(FormRenderer, sprite, formColor);
+                if (!_meshBindingLogged)
+                {
+                    var sourceTexture = sprite.texture;
+                    var shaderName = FormRenderer.sharedMaterial?.shader?.name ?? "sem shader";
+                    info($"Textura da malha do Rimuru: sprite {sprite.name}, origem {sourceTexture?.name ?? "ausente"} {sourceTexture?.width ?? 0}x{sourceTexture?.height ?? 0}, shader {shaderName}, aplicada {textureApplied}.");
+                    _meshBindingLogged = true;
+                }
+            }
+            else if (!_missingFormSpriteLogged)
+            {
+                info($"Sprite de forma nao encontrado: {formSpriteId}; dicionario com {sprites.Count} item(ns).");
+                _missingFormSpriteLogged = true;
             }
 
             FormNode.SetActive(true);
-            FormNode.transform.position = Controller.transform.position + new Vector3(0f, 0f, -0.05f);
-            FormNode.transform.localScale = Vector3.one * (Form == RimuruForm.Slime ? 1.18f : 1f);
-            FormRenderer.enabled = true;
-            FormRenderer.color = Color.white;
-            if (nativeRenderer is not null)
+            var bob = Mathf.Sin(time * (displayedForm == RimuruForm.Slime ? 9f : 7f));
+            var baseScale = displayedForm switch
             {
-                nativeRenderer.enabled = false;
-                FormRenderer.flipX = nativeRenderer.flipX;
-                FormRenderer.sortingLayerID = nativeRenderer.sortingLayerID;
-                FormRenderer.sortingOrder = nativeRenderer.sortingOrder + 4;
+                RimuruForm.Slime => 1.18f,
+                RimuruForm.Humanoid => 1.45f,
+                RimuruForm.DemonLord => 1.35f,
+                _ => 1f
+            };
+            var squashX = baseScale * (1f + bob * (displayedForm == RimuruForm.Slime ? 0.045f : 0.018f));
+            var squashY = baseScale * (1f - bob * (displayedForm == RimuruForm.Slime ? 0.035f : 0.012f));
+            if (transforming)
+            {
+                var surge = 0.72f + Mathf.Sin(transformationProgress * Mathf.PI) * 0.62f;
+                squashX *= surge;
+                squashY *= surge;
+            }
+            FormNode.transform.position = Controller.transform.position + new Vector3(0f, bob * 0.025f, -0.05f);
+            FormNode.transform.localScale = new Vector3(_lastFlipX ? -squashX : squashX, squashY, 1f);
+            FormRenderer.enabled = true;
+            FormRenderer.forceRenderingOff = false;
+            if (RimuruVisuals.IsUsable(nativeRenderer))
+            {
+                try
+                {
+                    _lastFlipX = nativeRenderer.flipX;
+                }
+                catch
+                {
+                    // Continue rendering our form and weapon even if the native wrapper expired.
+                }
+            }
+
+
+            var showWeapon = Form != RimuruForm.Slime;
+            WeaponNode.SetActive(showWeapon);
+            WeaponRenderer.enabled = showWeapon;
+            WeaponRenderer.forceRenderingOff = false;
+            if (showWeapon)
+            {
+                var weaponId = HasAzathoth ? "azathoth-void-blade" : Form == RimuruForm.DemonLord ? "beelzebuth-blade" : "rimuru-katana-v2";
+                sprites.TryGetValue(weaponId, out var weaponSprite);
+                var facingLeft = _lastFlipX;
+                var attackDuration = Mathf.Max(0.01f, AttackAnimationUntil - AttackAnimationStartedAt);
+                var attackProgress = Mathf.Clamp01((time - AttackAnimationStartedAt) / attackDuration);
+                var attacking = time < AttackAnimationUntil;
+                var direction = facingLeft ? -1f : 1f;
+                var idleAngle = facingLeft ? 48f : -48f;
+                var slashAngle = Mathf.Lerp(facingLeft ? -95f : 95f, facingLeft ? 70f : -70f, attackProgress);
+                WeaponNode.transform.position = Controller.transform.position + new Vector3(0.38f * direction, -0.04f, -0.08f);
+                WeaponNode.transform.rotation = Quaternion.Euler(0f, 0f, attacking ? slashAngle : idleAngle + bob * 3f);
+                var evolutionGlow = Mathf.Clamp01(1f - (time - WeaponEvolutionStartedAt) / 1.2f);
+                var weaponScale = (attacking ? 1.2f : 0.92f) * (1f + evolutionGlow * 0.45f);
+                WeaponNode.transform.localScale = new Vector3(facingLeft ? -weaponScale : weaponScale, weaponScale, 1f);
+                var weaponColor = evolutionGlow > 0f
+                    ? Color.Lerp(Color.white, new Color(0.35f, 0.9f, 1f, 1f), evolutionGlow)
+                    : Color.white;
+                RimuruVisuals.SetTexture(WeaponRenderer, weaponSprite, weaponColor);
+                WeaponRenderer.sortingLayerID = FormRenderer.sortingLayerID;
+                WeaponRenderer.sortingOrder = FormRenderer.sortingOrder + 2;
             }
         }
-        catch
+        catch (Exception exception)
         {
-            // The controller can be torn down between scene transitions.
+            if (!_animationFailureLogged)
+            {
+                info($"Falha no render proprio do Rimuru: {exception.GetType().Name}: {exception.Message}");
+                _animationFailureLogged = true;
+            }
         }
     }
 
     public void Dispose()
     {
-        if (FormNode is not null)
-        {
-            UObject.Destroy(FormNode);
-        }
+        RimuruVisuals.SafeDestroy(FormNode);
+        RimuruVisuals.SafeDestroy(WeaponNode);
         foreach (var ranga in Rangas)
         {
             ranga.Dispose();
@@ -1111,7 +1724,7 @@ internal sealed class RangaAvatar
     public float Cooldown { get; set; } = 0.5f;
     public bool HasHit { get; set; }
 
-    public void Dispose() => UObject.Destroy(Node);
+    public void Dispose() => RimuruVisuals.SafeDestroy(Node);
 }
 
 internal enum RimuruEffectKind
@@ -1139,9 +1752,10 @@ internal sealed class RimuruEffect
     public float Lifetime { get; set; }
     public float Age { get; set; }
     public float PulseTimer { get; set; }
+    public float Delay { get; set; }
     public int Pierce { get; set; }
     public bool ReaperProtocol { get; set; }
     public HashSet<int> HitIds { get; } = new();
 
-    public void Dispose() => UObject.Destroy(Node);
+    public void Dispose() => RimuruVisuals.SafeDestroy(Node);
 }

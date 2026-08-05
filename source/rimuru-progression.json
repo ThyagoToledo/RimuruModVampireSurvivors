@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 3,
+  "schemaVersion": 4,
   "characterId": "rimuru_tempest",
   "nativeCustomPackage": {
     "startingWeapon": "GARLIC",
@@ -124,6 +124,12 @@
       "treasure": true,
       "minimumForm": "humanoid"
     },
+    "betaRuntimeGate": {
+      "pollInventoryEveryFrame": true,
+      "acceptNativeNightSword2": true,
+      "stableFallbackMinimumCharacterLevel": 40,
+      "stableFallbackReason": "treasure callback disabled on this IL2CPP beta because the adaptive hook crashes the native runtime"
+    },
     "result": {
       "weaponId": "beelzebuth_demon_lord",
       "damageMultiplier": 2.0,
@@ -141,7 +147,11 @@
     "fromPassiveId": "great_sage",
     "requires": {
       "demonLordForm": true,
-      "revivalAnalysis": true
+      "revivalAnalysis": true,
+      "stableCombatAnalysisFallback": {
+        "minimumCharacterLevel": 55,
+        "beelzebuthLevel": 6
+      }
     },
     "result": {
       "copyEnemyAbility": true,
@@ -162,6 +172,11 @@
       "cielAwakened": true,
       "rangaSummoned": true,
       "treasure": true
+    },
+    "betaRuntimeGate": {
+      "minimumCharacterLevel": 60,
+      "stableInventoryPolling": true,
+      "visualAsset": "assets/weapons/azathoth-void-blade.png"
     },
     "result": {
       "weaponId": "azathoth_reaper_severance",
